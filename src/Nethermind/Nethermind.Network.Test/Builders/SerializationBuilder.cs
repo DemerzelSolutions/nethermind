@@ -25,6 +25,7 @@ using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Stats;
 
@@ -36,7 +37,7 @@ namespace Nethermind.Network.Test.Builders
 
         public SerializationBuilder(ITimestamper timestamper = null)
         {
-            _timestamper = timestamper ?? new Timestamper();
+            _timestamper = timestamper ?? Timestamper.Default;
             TestObject = new MessageSerializationService();
         }
 

@@ -26,6 +26,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Rlpx.Handshake
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class AuthMessageSerializerTests
     {
@@ -57,7 +58,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Assert.AreEqual(authMessage.IsTokenUsed, after.IsTokenUsed);
         }
 
-        [TestCase(ChainId.MainNet)]
+        [TestCase(ChainId.Mainnet)]
         [TestCase(ChainId.Morden)]
         [TestCase(ChainId.RootstockMainnet)]
         [TestCase(ChainId.DefaultGethPrivateChain)]
@@ -65,16 +66,16 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [TestCase(ChainId.EthereumClassicTestnet)]
         public void Encode_decode_before_eip155(int chainId)
         {
-            EthereumEcdsa ecdsa = new EthereumEcdsa(OlympicSpecProvider.Instance, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Olympic, LimboLogs.Instance);
             TestEncodeDecode(ecdsa);
         }
 
-        [TestCase(ChainId.MainNet)]
+        [TestCase(ChainId.Mainnet)]
         [TestCase(ChainId.Ropsten)]
         [TestCase(ChainId.Kovan)]
         public void Encode_decode_with_eip155(int chainId)
         {
-            EthereumEcdsa ecdsa = new EthereumEcdsa(OlympicSpecProvider.Instance, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Olympic, LimboLogs.Instance);
             TestEncodeDecode(ecdsa);
         }
     }

@@ -41,8 +41,13 @@ namespace Nethermind.Db
         void Clear();
     }
 
-    public interface IDbWithSpan : IDisposable
+    public interface IDbWithSpan : IDb
     {
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="key"></param>
+        /// <returns>Can return null or empty Span on missing key</returns>
         Span<byte> GetSpan(byte[] key);
         void DangerousReleaseMemory(in Span<byte> span);
     }

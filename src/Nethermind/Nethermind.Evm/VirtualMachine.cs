@@ -71,7 +71,7 @@ namespace Nethermind.Evm
 
         private readonly IBlockhashProvider _blockhashProvider;
         private readonly ISpecProvider _specProvider;
-        private readonly LruCache<Keccak, CodeInfo> _codeCache = new LruCache<Keccak, CodeInfo>(4 * 1024);
+        private static readonly ICache<Keccak, CodeInfo> _codeCache = new LruCacheWithRecycling<Keccak, CodeInfo>(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
         private readonly ILogger _logger;
         private readonly IStateProvider _state;
         private readonly Stack<EvmState> _stateStack = new Stack<EvmState>();
@@ -255,7 +255,11 @@ namespace Nethermind.Evm
                                     currentState.GasAvailable -= gasAvailableForCodeDeposit;
                                     _state.Restore(previousState.StateSnapshot);
                                     _storage.Restore(previousState.StorageSnapshot);
-                                    _state.DeleteAccount(callCodeOwner);
+                                    if (!previousState.IsCreateOnPreExistingAccount)
+                                    {
+                                        _state.DeleteAccount(callCodeOwner);
+                                    }
+
                                     previousCallResult = BytesZero;
                                     previousStateSucceeded = false;
 
@@ -734,7 +738,7 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            BigInteger res = a.Sign * BigInteger.Remainder(BigInteger.Abs(a),BigInteger.Abs(b));
+                            BigInteger res = a.Sign * BigInteger.Remainder(BigInteger.Abs(a), BigInteger.Abs(b));
                             stack.PushSignedInt(in res);
                         }
 
@@ -1417,7 +1421,7 @@ namespace Nethermind.Evm
                                 _txTracer.ReportBlockHash(blockHash);
                             }
                         }
-                        
+
                         break;
                     }
                     case Instruction.COINBASE:
@@ -1613,7 +1617,7 @@ namespace Nethermind.Evm
 
                         if (spec.IsEip2200Enabled)
                         {
-                            if(_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - GasCostOf.SStoreNetMeteredEip2200 + 1);
+                            if (_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - GasCostOf.SStoreNetMeteredEip2200 + 1);
                             if (gasAvailable <= GasCostOf.CallStipend)
                             {
                                 EndInstructionTraceError(OutOfGasErrorText);
@@ -1959,7 +1963,7 @@ namespace Nethermind.Evm
                             EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
-                        
+
                         stack.Dup(instruction - Instruction.DUP1 + 1);
                         break;
                     }
@@ -2096,7 +2100,7 @@ namespace Nethermind.Evm
                         Address contractAddress = instruction == Instruction.CREATE
                             ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
                             : ContractAddress.From(env.ExecutingAccount, salt, initCode);
-                        
+
                         _state.IncrementNonce(env.ExecutingAccount);
 
                         int stateSnapshot = _state.TakeSnapshot();
@@ -2114,6 +2118,10 @@ namespace Nethermind.Evm
                         if (accountExists)
                         {
                             _state.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
+                        }
+                        else if (_state.IsDeadAccount(contractAddress))
+                        {
+                            _storage.ClearStorage(contractAddress);
                         }
 
                         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
@@ -2140,7 +2148,8 @@ namespace Nethermind.Evm
                             0L,
                             0L,
                             vmState.IsStatic,
-                            false);
+                            false,
+                            accountExists);
 
                         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
                         return new CallResult(callState);
@@ -2257,7 +2266,7 @@ namespace Nethermind.Evm
 
                         if (!transferValue.IsZero)
                         {
-                            if(_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
+                            if (_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
                             gasLimitUl += GasCostOf.CallStipend;
                         }
 
@@ -2342,6 +2351,7 @@ namespace Nethermind.Evm
                             (long) outputOffset,
                             (long) outputLength,
                             instruction == Instruction.STATICCALL || vmState.IsStatic,
+                            false,
                             false);
 
                         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
@@ -2395,7 +2405,6 @@ namespace Nethermind.Evm
 
                         Address inheritor = stack.PopAddress();
                         vmState.DestroyList.Add(env.ExecutingAccount);
-                        _storage.Destroy(env.ExecutingAccount);
 
                         UInt256 ownerBalance = _state.GetBalance(env.ExecutingAccount);
                         if (_txTracer.IsTracingActions) _txTracer.ReportSelfDestruct(env.ExecutingAccount, ownerBalance, inheritor);

@@ -22,6 +22,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class GetNodeDataMessageTests
     {
@@ -30,7 +31,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         {
             Keccak[] keys = {TestItem.KeccakA, TestItem.KeccakB};
             GetNodeDataMessage message = new GetNodeDataMessage(keys);
-            Assert.AreSame(keys, message.Keys);
+            Assert.AreSame(keys, message.Hashes);
         }
 
         [Test]

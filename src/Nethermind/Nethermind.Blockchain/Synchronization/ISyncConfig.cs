@@ -17,6 +17,7 @@
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Synchronization
@@ -32,7 +33,8 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "If set to 'true' then the Fast Sync (eth/63) synchronization algorithm will be used.", DefaultValue = "false")]
         bool FastSync { get; set; }
         
-        [ConfigItem(Description = "Relevant only if 'FastSync' is 'true'. If set to a value, then it will set a minimum height threshold limit up to which FullSync, if already on, will stay on when chain will be behind network. If this limit will be exceeded, it will switch back to FastSync. Please note that last " + SyncModeSelector.FullSyncThresholdString + " blocks will always be processed in FullSync, so setting it to less or equal to " + SyncModeSelector.FullSyncThresholdString + " will have no effect.", DefaultValue = "null")]
+        // Minimum is taken from MultiSyncModeSelector.StickyStateNodesDelta
+        [ConfigItem(Description = "Relevant only if 'FastSync' is 'true'. If set to a value, then it will set a minimum height threshold limit up to which FullSync, if already on, will stay on when chain will be behind network. If this limit will be exceeded, it will switch back to FastSync. In normal usage we do not recommend setting this to less than 32 as this can cause issues with chain reorgs. Please note that last 2 blocks will always be processed in FullSync, so setting it to less than 2 will have no effect.", DefaultValue = "1024")]
         long? FastSyncCatchUpHeightDelta { get; set; }
         
         [ConfigItem(Description = "If set to 'true' then in the Fast Sync mode blocks will be first downloaded from the provided PivotNumber downwards. This allows for parallelization of requests with many sync peers and with no need to worry about syncing a valid branch (syncing downwards to 0). You need to enter the pivot block number, hash and total difficulty from a trusted source (you can use etherscan and confirm with other sources if you wan to change it).", DefaultValue = "false")]
@@ -40,6 +42,9 @@ namespace Nethermind.Blockchain.Synchronization
         
         [ConfigItem(Description = "If set to 'true' then in the Fast Blocks mode Nethermind generates smaller requests to avoid Geth from disconnecting. On the Geth heavy networks (mainnet) it is desired while on Parity or Nethermind heavy networks (Goerli, AuRa) it slows down the sync by a factor of ~4", DefaultValue = "true")]
         public bool UseGethLimitsInFastBlocks { get; set; }
+        
+        [ConfigItem(Description = "If set to 'false' then beam sync will only download recent blocks.", DefaultValue = "true")]
+        bool DownloadHeadersInFastSync { get; set; }
         
         [ConfigItem(Description = "If set to 'true' then the block bodies will be downloaded in the Fast Sync mode.", DefaultValue = "true")]
         bool DownloadBodiesInFastSync { get; set; }
@@ -51,13 +56,15 @@ namespace Nethermind.Blockchain.Synchronization
         string PivotTotalDifficulty { get; }
         
         [ConfigItem(Description = "Number of the pivot block for the Fast Blocks sync.", DefaultValue = "null")]
-        string PivotNumber { get; }
+        string PivotNumber { get; set; }
         
         [ConfigItem(Description = "Hash of the pivot block for the Fast Blocks sync.", DefaultValue = "null")]
-        string PivotHash { get; }
+        string PivotHash { get; set; }
 
         long PivotNumberParsed => LongConverter.FromString(PivotNumber ?? "0");
-        
-        Keccak PivotHashParsed => new Keccak(Bytes.FromHexString(PivotHash));
+
+        UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0x0");
+
+        Keccak PivotHashParsed => PivotHash == null ? null : new Keccak(Bytes.FromHexString(PivotHash));
     }
 }

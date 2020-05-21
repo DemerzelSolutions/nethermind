@@ -24,7 +24,7 @@ namespace Nethermind.TxPool
     public interface ITxPoolPeer
     {
         public PublicKey Id { get; }
-        void SendNewTransaction(Transaction tx);
+        void SendNewTransaction(Transaction tx, bool isPriority);
     }
     
     public class NullTxPool : ITxPool
@@ -51,7 +51,7 @@ namespace Nethermind.TxPool
         {
         }
 
-        public AddTxResult AddTransaction(Transaction tx, long blockNumber, TxHandlingOptions txHandlingOptions) => AddTxResult.Added;
+        public AddTxResult AddTransaction(Transaction tx, TxHandlingOptions txHandlingOptions) => AddTxResult.Added;
 
         public void RemoveTransaction(Keccak hash, long blockNumber)
         {
@@ -62,7 +62,7 @@ namespace Nethermind.TxPool
             transaction = null;
             return false;
         }
-
+        
         public UInt256 ReserveOwnTransactionNonce(Address address) => UInt256.Zero;
 
         public event EventHandler<TxEventArgs> NewPending

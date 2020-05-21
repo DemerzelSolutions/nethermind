@@ -17,10 +17,12 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class GetNodeDataMessageSerializerTests
     {

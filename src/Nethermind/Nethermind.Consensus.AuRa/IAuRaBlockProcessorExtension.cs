@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.AuRa
@@ -23,6 +24,6 @@ namespace Nethermind.Consensus.AuRa
     {
         void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None);
         void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None);
-        void SetFinalizationManager(IBlockFinalizationManager finalizationManager, in bool forSealing = false);
+        void SetFinalizationManager(IBlockFinalizationManager finalizationManager, BlockHeader parentHeader);
     }
 }

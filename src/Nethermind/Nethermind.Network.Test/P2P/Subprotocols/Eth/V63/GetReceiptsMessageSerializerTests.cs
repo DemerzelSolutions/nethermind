@@ -22,6 +22,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class GetReceiptsMessageSerializerTests
     {
@@ -32,8 +33,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             var serialized = serializer.Serialize(message);
             GetReceiptsMessage deserialized = serializer.Deserialize(serialized);
 
-            Assert.AreEqual(keys.Length, deserialized.BlockHashes.Count, "count");
-            for (int i = 0; i < keys.Length; i++) Assert.AreEqual(keys[i], deserialized.BlockHashes[i], $"blockHashes[{i}]");
+            Assert.AreEqual(keys.Length, deserialized.Hashes.Count, "count");
+            for (int i = 0; i < keys.Length; i++) Assert.AreEqual(keys[i], deserialized.Hashes[i], $"blockHashes[{i}]");
         }
 
         [Test]

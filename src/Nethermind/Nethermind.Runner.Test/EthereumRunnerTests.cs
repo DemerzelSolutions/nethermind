@@ -40,7 +40,7 @@ using Nethermind.PubSub.Kafka;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Serialization.Json;
 using Nethermind.Stats;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using Nethermind.WebSockets;
 using NSubstitute;
@@ -48,7 +48,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Runner.Test
 {
-    [TestFixture, Parallelizable(ParallelScope.None)]
+    [TestFixture, Parallelizable(ParallelScope.Self)]
     public class EthereumRunnerTests
     {
         public class ConfigSource : IConfigSource

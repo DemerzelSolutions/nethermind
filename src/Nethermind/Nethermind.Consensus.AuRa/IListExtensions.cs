@@ -69,10 +69,7 @@ namespace Nethermind.Consensus.AuRa
         /// <param name="list">The list to be searched.</param>
         /// <param name="value">The value to search for.</param>
         /// <returns></returns>
-        public static int BinarySearch<TItem>(this IList<TItem> list, TItem value)
-        {
-            return BinarySearch(list, value, Comparer<TItem>.Default);
-        }
+        public static int BinarySearch<TItem>(this IList<TItem> list, TItem value) => BinarySearch(list, value, Comparer<TItem>.Default);
 
         /// <summary>
         /// Performs a binary search on the specified collection.
@@ -83,9 +80,51 @@ namespace Nethermind.Consensus.AuRa
         /// <param name="comparer">The comparer that is used to compare the value
         /// with the list items.</param>
         /// <returns></returns>
-        public static int BinarySearch<TItem>(this IList<TItem> list, TItem value,  IComparer<TItem> comparer)
+        public static int BinarySearch<TItem>(this IList<TItem> list, TItem value,  IComparer<TItem> comparer) => list.BinarySearch(value, comparer.Compare);
+
+        /// <summary>
+        /// Tries to get a <see cref="IActivatedAt"/> item for block <see cref="activation"/>.
+        /// </summary>
+        /// <param name="list"></param>
+        /// <param name="activation"></param>
+        /// <param name="item"></param>
+        /// <typeparam name="T"></typeparam>
+        /// <typeparam name="TComparable"></typeparam>
+        /// <returns></returns>
+        public static bool TryGetForActivation<T, TComparable>(this IList<T> list, in TComparable activation, out T item) where T : IActivatedAt<TComparable> where TComparable : IComparable<TComparable> => 
+            list.TryGetForActivation(activation, (b, c) => b.CompareTo(c.Activation), out item);
+        
+        public static bool TryGetForActivation<TComparable>(this IList<TComparable> list, in TComparable activation, out TComparable item) where TComparable : IComparable<TComparable> => 
+            list.TryGetForActivation(activation, (b, c) => b.CompareTo(c), out item);
+        
+        public static bool TryGetForBlock<T>(this IList<T> list, in long blockNumber, out T item) where T : IActivatedAtBlock =>
+            list.TryGetForActivation(blockNumber, (b, c) => b.CompareTo(c.ActivationBlock), out item);
+        
+        public static bool TryGetForBlock(this IList<long> list, in long blockNumber, out long item) =>
+            list.TryGetForActivation(blockNumber, (b, c) => b.CompareTo(c), out item);
+        
+        public static bool TryGetForActivation<T, TComparable>(this IList<T> list, in TComparable activation, Func<TComparable, T, int> comparer, out T item)
         {
-            return list.BinarySearch(value, comparer.Compare);
+            var index = list.BinarySearch(activation, comparer);
+            if (index >= 0)
+            {
+                item = list[index];
+                return true;
+            }
+            else
+            {
+                var largerIndex = ~index;
+                if (largerIndex != 0)
+                {
+                    item = list[largerIndex - 1];
+                    return true;
+                }
+                else
+                {
+                    item = default;
+                    return false;
+                }
+            }
         }
     }
 }

@@ -254,7 +254,7 @@ namespace Nethermind.Network
                     Interlocked.Exchange(ref _connectionRounds, 0);
 
                     SelectAndRankCandidates();
-                    IReadOnlyCollection<Peer> remainingCandidates = _currentSelection.Candidates;
+                    List<Peer> remainingCandidates = _currentSelection.Candidates;
                     if (!remainingCandidates.Any())
                     {
                         continue;
@@ -265,6 +265,7 @@ namespace Nethermind.Network
                         break;
                     }
 
+                    int currentPosition = 0;                    
                     while (true)
                     {
                         if (_cancellationTokenSource.IsCancellationRequested)
@@ -272,16 +273,12 @@ namespace Nethermind.Network
                             break;
                         }
 
-                        int nodesToTry = Math.Min(remainingCandidates.Count, AvailableActivePeersCount);
-                        if (nodesToTry == 0)
+                        int nodesToTry = Math.Min(remainingCandidates.Count - currentPosition, AvailableActivePeersCount);
+                        if (nodesToTry <= 0)
                         {
                             break;
                         }
-
-                        IEnumerable<Peer> candidatesToTry = remainingCandidates.Take(nodesToTry)
-                            .Distinct(_peerEqualityComparer);
-                        remainingCandidates = remainingCandidates.Skip(nodesToTry).ToList();
-
+                        
                         ActionBlock<Peer> workerBlock = new ActionBlock<Peer>(
                             SetupPeerConnection,
                             new ExecutionDataflowBlockOptions
@@ -290,10 +287,12 @@ namespace Nethermind.Network
                                 CancellationToken = _cancellationTokenSource.Token
                             });
 
-                        foreach (Peer candidateToTry in candidatesToTry)
+                        for (int i = 0; i < nodesToTry; i++)
                         {
-                            await workerBlock.SendAsync(candidateToTry);
+                            await workerBlock.SendAsync(remainingCandidates[currentPosition + i]);
                         }
+
+                        currentPosition += nodesToTry;
 
                         workerBlock.Complete();
 
@@ -410,7 +409,7 @@ namespace Nethermind.Network
         private void RemoveActivePeer(PublicKey nodeId, string reason)
         {
             bool removed = _activePeers.TryRemove(nodeId, out Peer removedPeer);
-            if (removed && _logger.IsDebug) _logger.Debug($"{removedPeer.Node:s} removed from active peers - {reason}");
+            // if (removed && _logger.IsDebug) _logger.Debug($"{removedPeer.Node:s} removed from active peers - {reason}");
         }
 
         private void DeactivatePeerIfDisconnected(Peer peer, string reason)
@@ -440,7 +439,7 @@ namespace Nethermind.Network
                 return;
             }
 
-            foreach (Peer peer in _peerPool.CandidatePeers)
+            foreach ((_, Peer peer) in _peerPool.AllPeers)
             {
                 // node can be connected but a candidate (for some short times)
                 // [describe when]
@@ -788,10 +787,26 @@ namespace Nethermind.Network
             if (_logger.IsTrace) _logger.Trace($"RemoteNodeId was updated due to handshake difference, old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}, new peer not present in candidate collection");
         }
 
+        private int _maxPeerPoolLength;
+        private int _lastPeerPoolLength;
+        
         private void OnNodeDiscovered(object sender, NodeEventArgs nodeEventArgs)
         {
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {nodeEventArgs.Node:e} node discovered");
             Peer peer = _peerPool.GetOrAdd(nodeEventArgs.Node);
+
+            lock (_peerPool)
+            {
+                int newPeerPoolLength = _peerPool.CandidatePeerCount;
+                _lastPeerPoolLength = newPeerPoolLength;
+
+                if (_lastPeerPoolLength > _maxPeerPoolLength + 100)
+                {
+                    _maxPeerPoolLength = _lastPeerPoolLength;
+                    if(_logger.IsDebug) _logger.Debug($"Peer pool size is: {_lastPeerPoolLength}");
+                }
+            }
+
             _stats.ReportEvent(nodeEventArgs.Node, NodeStatsEventType.NodeDiscovered);
             if (_pending < AvailableActivePeersCount)
             {
@@ -823,7 +838,11 @@ namespace Nethermind.Network
         {
             if (_logger.IsDebug) _logger.Debug("Starting peer persistence timer");
 
-            _peerPersistenceTimer = new System.Timers.Timer(_networkConfig.PeersPersistenceInterval) {AutoReset = false};
+            _peerPersistenceTimer = new System.Timers.Timer(_networkConfig.PeersPersistenceInterval)
+            {
+                AutoReset = false
+            };
+            
             _peerPersistenceTimer.Elapsed += (sender, e) =>
             {
                 try
@@ -960,7 +979,7 @@ namespace Nethermind.Network
 
             if (nodesToRemove.Length > 0)
             {
-                _logger.Info($"Removing {nodesToRemove.Length} out of {candidates.Count} peers (cleanup).");
+                _logger.Info($"Removing {nodesToRemove.Length} out of {candidates.Count} peer candidates (candidates cleanup).");
                 foreach (Peer peer in nodesToRemove)
                 {
                     _peerPool.TryRemove(peer.Node.Id, out _);

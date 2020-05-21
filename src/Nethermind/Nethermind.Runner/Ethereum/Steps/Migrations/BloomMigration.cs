@@ -30,7 +30,10 @@ using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Store.Bloom;
+using Nethermind.State.Repositories;
+using Nethermind.Db.Blooms;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using Timer = System.Timers.Timer;
 
 namespace Nethermind.Runner.Ethereum.Steps.Migrations
@@ -61,19 +64,20 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
         {
             if (_context.BloomStorage == null) throw new StepDependencyException(nameof(_context.BloomStorage));
             if (_context.Synchronizer == null) throw new StepDependencyException(nameof(_context.Synchronizer));
+            if (_context.SyncModeSelector == null) throw new StepDependencyException(nameof(_context.SyncModeSelector));
 
             IBloomStorage? storage = _context.BloomStorage;
             if (storage.NeedsMigration)
             {
                 if (_bloomConfig.Migration)
                 {
-                    if (CanMigrate(_context.Synchronizer.SyncMode))
+                    if (CanMigrate(_context.SyncModeSelector.Current))
                     {
                         RunBloomMigration();
                     }
                     else
                     {
-                        _context.Synchronizer.SyncModeChanged += SynchronizerOnSyncModeChanged;
+                        _context.SyncModeSelector.Changed += SynchronizerOnSyncModeChanged;
                     }
                 }
                 else
@@ -89,24 +93,17 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
         
         private bool CanMigrate(SyncMode syncMode)
         {
-            switch (syncMode)
-            {
-                case SyncMode.NotStarted:
-                case SyncMode.FastBlocks:
-                case SyncMode.Beam:
-                    return false;
-                default:
-                    return true;
-            }
+            return (syncMode & SyncMode.Full) == SyncMode.Full;
         }
 
         private void SynchronizerOnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
         {
             if (CanMigrate(e.Current))
             {
-                if (_context.Synchronizer == null) throw new StepDependencyException(nameof(_context.Synchronizer));
+                if (_context.SyncModeSelector == null) throw new StepDependencyException(nameof(_context.SyncModeSelector));
+
                 RunBloomMigration();
-                _context.Synchronizer.SyncModeChanged -= SynchronizerOnSyncModeChanged;
+                _context.SyncModeSelector.Changed -= SynchronizerOnSyncModeChanged;
             }
         }
 
@@ -155,6 +152,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
 
             if (_context.BloomStorage == null) throw new StepDependencyException(nameof(_context.BloomStorage));
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+            if (_context.ChainLevelInfoRepository == null) throw new StepDependencyException(nameof(_context.ChainLevelInfoRepository));
             
             IBlockTree blockTree = _context.BlockTree;
             IBloomStorage storage = _context.BloomStorage;

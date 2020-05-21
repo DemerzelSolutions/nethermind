@@ -27,15 +27,20 @@ using Nethermind.Logging;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.Rlpx;
+using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class ProtocolsManagerTests
     {
@@ -60,7 +65,7 @@ namespace Nethermind.Network.Test
             private IProtocolValidator _protocolValidator;
             private IMessageSerializationService _serializer;
             private ISyncServer _syncServer;
-            private IEthSyncPeerPool _syncPeerPool;
+            private ISyncPeerPool _syncPeerPool;
             private ITxPool _txPool;
             private IChannelHandlerContext _channelHandlerContext;
             private IChannel _channel;
@@ -93,7 +98,7 @@ namespace Nethermind.Network.Test
                 _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
                 _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, LimboLogs.Instance);
                 _peerStorage = Substitute.For<INetworkStorage>();
-                _syncPeerPool = Substitute.For<IEthSyncPeerPool>();
+                _syncPeerPool = Substitute.For<ISyncPeerPool>();
                 _manager = new ProtocolsManager(
                     _syncPeerPool,
                     _syncServer,
@@ -104,6 +109,7 @@ namespace Nethermind.Network.Test
                     _nodeStatsManager,
                     _protocolValidator,
                     _peerStorage,
+                    MainnetSpecProvider.Instance, 
                     LimboLogs.Instance);
 
                 _serializer.Register(new HelloMessageSerializer());

@@ -17,10 +17,11 @@
 using System;
 using System.IO;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Synchronization.BeamSync;
 using Nethermind.Core;
+using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
@@ -28,6 +29,9 @@ using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Synchronization.BeamSync;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.StateSync;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -57,9 +61,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.DbProvider = await GetDbProvider(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
             if (syncConfig.BeamSync)
             {
-                BeamSyncDbProvider beamSyncProvider = new BeamSyncDbProvider(_context.DbProvider, "processor DB", _context.LogManager);
+                _context.SyncModeSelector = new PendingSyncModeSelector();
+                BeamSyncDbProvider beamSyncProvider = new BeamSyncDbProvider(_context.SyncModeSelector, _context.DbProvider, _context.LogManager);
                 _context.DbProvider = beamSyncProvider;
-                _context.NodeDataConsumer = beamSyncProvider.NodeDataConsumer;
             }
         }
 
@@ -83,7 +87,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private async Task<RocksDbProvider> GetRocksDbProvider(IDbConfig dbConfig, string basePath, bool useReceiptsDb)
         {
-            RocksDbProvider debugRecorder = new RocksDbProvider(_context.LogManager);
+            RocksDbProvider debugRecorder = new RocksDbProvider(_context.LogManager, _context.Config<INdmConfig>().Enabled);
             ThisNodeInfo.AddInfo("DB location  :", $"{basePath}");
             await debugRecorder.Init(basePath, dbConfig, useReceiptsDb);
             return debugRecorder;

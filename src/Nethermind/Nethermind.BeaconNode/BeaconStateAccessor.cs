@@ -158,7 +158,7 @@ namespace Nethermind.BeaconNode
             // NOTE: Need to use '+' to avoid underflow issues
             if (slot + timeParameters.SlotsPerHistoricalRoot < state.Slot)
             {
-                throw new ArgumentOutOfRangeException(nameof(slot), slot, $"Slot can not be more than one root ({timeParameters.SlotsPerHistoricalRoot} slots) behind the state slot {state.Slot}");
+                throw new ArgumentOutOfRangeException(nameof(slot), slot, $"Slot can not be more than historical root ({timeParameters.SlotsPerHistoricalRoot} slots) behind the state slot {state.Slot}");
             }
             if (slot >= state.Slot)
             {
@@ -193,12 +193,9 @@ namespace Nethermind.BeaconNode
         /// <summary>
         /// Return the signature domain (fork version concatenated with domain type) of a message.
         /// </summary>
-        public Domain GetDomain(BeaconState state, DomainType domainType, Epoch epoch)
+        public Domain GetDomain(BeaconState state, DomainType domainType, Epoch? optionalEpoch)
         {
-            if (epoch == Epoch.None)
-            {
-                epoch = GetCurrentEpoch(state);
-            }
+            Epoch epoch = optionalEpoch ?? GetCurrentEpoch(state);
 
             ForkVersion forkVersion;
             if (epoch < state.Fork.Epoch)

@@ -17,6 +17,8 @@
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
@@ -34,10 +36,10 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Store;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.JsonRpc.Benchmark
 {
@@ -55,8 +57,8 @@ namespace Nethermind.JsonRpc.Benchmark
             ISnapshotableDb stateDb = new StateDb();
             IDb blockInfoDb = new MemDb(10, 5);
 
-            ISpecProvider specProvider = MainNetSpecProvider.Instance;
-            IReleaseSpec spec = MainNetSpecProvider.Instance.GenesisSpec;
+            ISpecProvider specProvider = MainnetSpecProvider.Instance;
+            IReleaseSpec spec = MainnetSpecProvider.Instance.GenesisSpec;
             
             StateProvider stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);
             stateProvider.CreateAccount(Address.Zero, 1000.Ether());
@@ -77,15 +79,15 @@ namespace Nethermind.JsonRpc.Benchmark
             blockTree.SuggestBlock(block1);
             
             TransactionProcessor transactionProcessor
-                 = new TransactionProcessor(MainNetSpecProvider.Instance, stateProvider, storageProvider, _virtualMachine, LimboLogs.Instance);
+                 = new TransactionProcessor(MainnetSpecProvider.Instance, stateProvider, storageProvider, _virtualMachine, LimboLogs.Instance);
             
-            BlockProcessor blockProcessor = new BlockProcessor(specProvider, AlwaysValidBlockValidator.Instance, new RewardCalculator(specProvider), transactionProcessor,
+            BlockProcessor blockProcessor = new BlockProcessor(specProvider, Always.Valid, new RewardCalculator(specProvider), transactionProcessor,
                 stateDb, codeDb, stateProvider, storageProvider, NullTxPool.Instance, NullReceiptStorage.Instance, LimboLogs.Instance);
 
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(
                 blockTree,
                 blockProcessor,
-                new TxSignaturesRecoveryStep(new EthereumEcdsa(specProvider, LimboLogs.Instance), NullTxPool.Instance, LimboLogs.Instance),
+                new TxSignaturesRecoveryStep(specProvider, new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance), NullTxPool.Instance, LimboLogs.Instance),
                 LimboLogs.Instance,
                 false);
 
@@ -105,11 +107,15 @@ namespace Nethermind.JsonRpc.Benchmark
                 NullFilterManager.Instance, 
                 new DevWallet(new WalletConfig(), LimboLogs.Instance), 
                 transactionProcessor, 
-                new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance),
+                new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance),
                 bloomStorage,
-                LimboLogs.Instance);
+                specProvider,
+                LimboLogs.Instance,
+                false);
             
-            _ethModule = new EthModule(new JsonRpcConfig(), LimboLogs.Instance, bridge);
+            TxPoolBridge txPoolBridge = new TxPoolBridge(NullTxPool.Instance, NullWallet.Instance, Timestamper.Default, specProvider.ChainId);
+            
+            _ethModule = new EthModule(new JsonRpcConfig(), bridge, txPoolBridge, LimboLogs.Instance);
         }
 
         [Benchmark]

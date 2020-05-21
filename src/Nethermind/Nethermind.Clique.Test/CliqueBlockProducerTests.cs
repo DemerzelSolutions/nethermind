@@ -21,6 +21,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
@@ -38,15 +40,17 @@ using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using Nethermind.Wallet;
 using NUnit.Framework;
+using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Clique.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class CliqueBlockProducerTests
     {
         private class On
@@ -54,9 +58,9 @@ namespace Nethermind.Clique.Test
             private ILogManager _logManager = LimboLogs.Instance;
 //            private ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
             private ILogger _logger;
-            private static Timestamper _timestamper = new Timestamper();
+            private static ITimestamper _timestamper = Timestamper.Default;
             private CliqueConfig _cliqueConfig;
-            private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(GoerliSpecProvider.Instance, LimboLogs.Instance);
+            private EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(ChainId.Goerli, LimboLogs.Instance);
             private Dictionary<PrivateKey, ILogManager> _logManagers = new Dictionary<PrivateKey, ILogManager>();
             private Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new Dictionary<PrivateKey, ISnapshotManager>();
             private Dictionary<PrivateKey, BlockTree> _blockTrees = new Dictionary<PrivateKey, BlockTree>();
@@ -126,7 +130,7 @@ namespace Nethermind.Clique.Test
 
                 StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, nodeLogManager);
                 TransactionProcessor transactionProcessor = new TransactionProcessor(GoerliSpecProvider.Instance, stateProvider, storageProvider, new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, nodeLogManager), nodeLogManager);
-                BlockProcessor blockProcessor = new BlockProcessor(GoerliSpecProvider.Instance, AlwaysValidBlockValidator.Instance, NoBlockRewards.Instance, transactionProcessor, stateDb, codeDb, stateProvider, storageProvider, txPool, NullReceiptStorage.Instance, nodeLogManager);
+                BlockProcessor blockProcessor = new BlockProcessor(GoerliSpecProvider.Instance, Always.Valid, NoBlockRewards.Instance, transactionProcessor, stateDb, codeDb, stateProvider, storageProvider, txPool, NullReceiptStorage.Instance, nodeLogManager);
                 BlockchainProcessor processor = new BlockchainProcessor(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), nodeLogManager, false);
                 processor.Start();
 
@@ -134,7 +138,7 @@ namespace Nethermind.Clique.Test
                 StorageProvider minerStorageProvider = new StorageProvider(stateDb, minerStateProvider, nodeLogManager);
                 VirtualMachine minerVirtualMachine = new VirtualMachine(minerStateProvider, minerStorageProvider, blockhashProvider, specProvider, nodeLogManager);
                 TransactionProcessor minerTransactionProcessor = new TransactionProcessor(GoerliSpecProvider.Instance, minerStateProvider, minerStorageProvider, minerVirtualMachine, nodeLogManager);
-                BlockProcessor minerBlockProcessor = new BlockProcessor(GoerliSpecProvider.Instance, AlwaysValidBlockValidator.Instance, NoBlockRewards.Instance, minerTransactionProcessor, stateDb, codeDb, minerStateProvider, minerStorageProvider, txPool, NullReceiptStorage.Instance,  nodeLogManager);
+                BlockProcessor minerBlockProcessor = new BlockProcessor(GoerliSpecProvider.Instance, Always.Valid, NoBlockRewards.Instance, minerTransactionProcessor, stateDb, codeDb, minerStateProvider, minerStorageProvider, txPool, NullReceiptStorage.Instance,  nodeLogManager);
                 BlockchainProcessor minerProcessor = new BlockchainProcessor(blockTree, minerBlockProcessor, new AuthorRecoveryStep(snapshotManager), nodeLogManager, false);
 
                 if (withGenesisAlreadyProcessed)
@@ -142,8 +146,8 @@ namespace Nethermind.Clique.Test
                     ProcessGenesis(privateKey);
                 }
 
-                PendingTxSelector pendingTxSelector = new PendingTxSelector(txPool, stateReader, nodeLogManager);
-                CliqueBlockProducer blockProducer = new CliqueBlockProducer(pendingTxSelector, minerProcessor, minerStateProvider, blockTree, _timestamper, new CryptoRandom(), snapshotManager, cliqueSealer, privateKey.Address, _cliqueConfig, nodeLogManager);
+                TxPoolTxSource txPoolTxSource = new TxPoolTxSource(txPool, stateReader, nodeLogManager);
+                CliqueBlockProducer blockProducer = new CliqueBlockProducer(txPoolTxSource, minerProcessor, minerStateProvider, blockTree, _timestamper, new CryptoRandom(), snapshotManager, cliqueSealer, privateKey.Address, _cliqueConfig, nodeLogManager);
                 blockProducer.Start();
 
                 _producers.Add(privateKey, blockProducer);
@@ -392,8 +396,8 @@ namespace Nethermind.Clique.Test
                 transaction.Nonce = _currentNonce++;
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = transaction.CalculateHash();
-                _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, 1);
-                _pools[nodeKey].AddTransaction(transaction, 1, TxHandlingOptions.None);
+                _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
+                _pools[nodeKey].AddTransaction(transaction, TxHandlingOptions.None);
 
                 return this;
             }
@@ -409,8 +413,8 @@ namespace Nethermind.Clique.Test
                 transaction.Nonce = _currentNonce;
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = transaction.CalculateHash();
-                _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, 1);
-                _pools[nodeKey].AddTransaction(transaction, 1, TxHandlingOptions.None);
+                _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
+                _pools[nodeKey].AddTransaction(transaction, TxHandlingOptions.None);
 
                 // bad nonce
                 transaction = new Transaction();
@@ -421,8 +425,8 @@ namespace Nethermind.Clique.Test
                 transaction.Nonce = 0;
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = transaction.CalculateHash();
-                _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, 1);
-                _pools[nodeKey].AddTransaction(transaction, 1, TxHandlingOptions.None);
+                _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
+                _pools[nodeKey].AddTransaction(transaction, TxHandlingOptions.None);
 
                 // gas limit too high
                 transaction = new Transaction();
@@ -433,8 +437,8 @@ namespace Nethermind.Clique.Test
                 transaction.Nonce = _currentNonce;
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = transaction.CalculateHash();
-                _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, 1);
-                _pools[nodeKey].AddTransaction(transaction, 1, TxHandlingOptions.None);
+                _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
+                _pools[nodeKey].AddTransaction(transaction, TxHandlingOptions.None);
 
                 // insufficient balance
                 transaction = new Transaction();
@@ -445,8 +449,8 @@ namespace Nethermind.Clique.Test
                 transaction.Nonce = _currentNonce;
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = transaction.CalculateHash();
-                _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, 1);
-                _pools[nodeKey].AddTransaction(transaction, 1, TxHandlingOptions.None);
+                _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
+                _pools[nodeKey].AddTransaction(transaction, TxHandlingOptions.None);
 
                 return this;
             }
@@ -461,8 +465,8 @@ namespace Nethermind.Clique.Test
                 transaction.Nonce = _currentNonce + 1000;
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = transaction.CalculateHash();
-                _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, 1);
-                _pools[nodeKey].AddTransaction(transaction, 1, TxHandlingOptions.None);
+                _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
+                _pools[nodeKey].AddTransaction(transaction, TxHandlingOptions.None);
 
                 return this;
             }

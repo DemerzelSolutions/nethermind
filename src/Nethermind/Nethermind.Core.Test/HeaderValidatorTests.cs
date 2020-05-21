@@ -19,8 +19,7 @@ using System.Numerics;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Mining;
-using Nethermind.Consensus.Mining.Difficulty;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Core.Crypto;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -29,7 +28,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -48,7 +47,7 @@ namespace Nethermind.Core.Test
         [SetUp]
         public void Setup()
         {
-            DifficultyCalculator calculator = new DifficultyCalculator(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.MainNet));
+            DifficultyCalculator calculator = new DifficultyCalculator(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.Mainnet));
             _ethash = new EthashSealValidator(LimboLogs.Instance, calculator, new CryptoRandom(), new Ethash(LimboLogs.Instance));
             _testLogger = new TestLogger();
             var blockInfoDb = new MemDb();

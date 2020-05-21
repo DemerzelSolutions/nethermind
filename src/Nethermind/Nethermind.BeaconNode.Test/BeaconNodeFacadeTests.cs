@@ -55,7 +55,7 @@ namespace Nethermind.BeaconNode.Test
             testServiceCollection.AddSingleton<IOperationPool>(Substitute.For<IOperationPool>());
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
-            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
             IStore store = testServiceProvider.GetService<IStore>();
             await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
@@ -83,7 +83,7 @@ namespace Nethermind.BeaconNode.Test
             testServiceCollection.AddSingleton<IOperationPool>(Substitute.For<IOperationPool>());
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
-            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
             IStore store = testServiceProvider.GetService<IStore>();
             await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
@@ -128,7 +128,8 @@ namespace Nethermind.BeaconNode.Test
 
             // Assert
             Dictionary<Slot, IGrouping<Slot, ValidatorDuty>> groupsByProposalSlot = validatorDuties
-                .GroupBy(x => x.BlockProposalSlot)
+                .Where(x => x.BlockProposalSlot.HasValue)
+                .GroupBy(x => x.BlockProposalSlot!.Value)
                 .ToDictionary(x => x.Key, x => x);
             groupsByProposalSlot[new Slot(0)].Count().ShouldBe(1);
             groupsByProposalSlot[new Slot(1)].Count().ShouldBe(1);
@@ -138,7 +139,7 @@ namespace Nethermind.BeaconNode.Test
             groupsByProposalSlot[new Slot(5)].Count().ShouldBe(1);
             groupsByProposalSlot[new Slot(6)].Count().ShouldBe(1);
             //groupsByProposalSlot[new Slot(7)].Count().ShouldBe(1);
-            groupsByProposalSlot[Slot.None].Count().ShouldBe(numberOfValidators - 7);
+            validatorDuties.Count(x => !x.BlockProposalSlot.HasValue).ShouldBe(numberOfValidators - 7);
         }
         
         [TestMethod]
@@ -151,7 +152,7 @@ namespace Nethermind.BeaconNode.Test
             testServiceCollection.AddSingleton<IOperationPool>(Substitute.For<IOperationPool>());
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
-            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
             IStore store = testServiceProvider.GetService<IStore>();
             await forkChoice.InitializeForkChoiceStoreAsync(store, state);            
@@ -191,7 +192,8 @@ namespace Nethermind.BeaconNode.Test
             
             // Assert
             Dictionary<Slot, IGrouping<Slot, ValidatorDuty>> groupsByProposalSlot = validatorDuties
-                .GroupBy(x => x.BlockProposalSlot)
+                .Where(x => x.BlockProposalSlot.HasValue)
+                .GroupBy(x => x.BlockProposalSlot!.Value)
                 .ToDictionary(x => x.Key, x => x);
             groupsByProposalSlot[new Slot(8)].Count().ShouldBe(1);
             groupsByProposalSlot[new Slot(9)].Count().ShouldBe(1);
@@ -201,7 +203,7 @@ namespace Nethermind.BeaconNode.Test
             groupsByProposalSlot[new Slot(13)].Count().ShouldBe(1);
             groupsByProposalSlot[new Slot(14)].Count().ShouldBe(1);
             //groupsByProposalSlot[new Slot(15)].Count().ShouldBe(1);
-            groupsByProposalSlot[Slot.None].Count().ShouldBe(numberOfValidators - 7);
+            validatorDuties.Count(x => !x.BlockProposalSlot.HasValue).ShouldBe(numberOfValidators - 7);
         }
         
         [TestMethod]
@@ -260,7 +262,8 @@ namespace Nethermind.BeaconNode.Test
             
             // Assert
             Dictionary<Slot, IGrouping<Slot, ValidatorDuty>> groupsByProposalSlot = validatorDuties
-                .GroupBy(x => x.BlockProposalSlot)
+                .Where(x => x.BlockProposalSlot.HasValue)
+                .GroupBy(x => x.BlockProposalSlot!.Value)
                 .ToDictionary(x => x.Key, x => x);
             groupsByProposalSlot[new Slot(0)].Count().ShouldBe(1);
             groupsByProposalSlot[new Slot(1)].Count().ShouldBe(1);
@@ -286,9 +289,12 @@ namespace Nethermind.BeaconNode.Test
             IStore mockStore = Substitute.For<IStore>();
             Root root = new Root(Enumerable.Repeat((byte) 0x12, 32).ToArray());
             Checkpoint checkpoint = new Checkpoint(Epoch.Zero, root);
-            BeaconBlock block = new BeaconBlock(current, Root.Zero, Root.Zero, BeaconBlockBody.Zero);
+            SignedBeaconBlock signedBlock =
+                new SignedBeaconBlock(new BeaconBlock(current, Root.Zero, Root.Zero, BeaconBlockBody.Zero),
+                    BlsSignature.Zero);
             var state = TestState.Create(slot: current, finalizedCheckpoint: checkpoint);
-            mockStore.GetBlockAsync(root).Returns(block);
+            mockStore.GetHeadAsync().Returns(root);
+            mockStore.GetSignedBlockAsync(root).Returns(signedBlock);
             mockStore.GetBlockStateAsync(root).Returns(state);
             mockStore.IsInitialized.Returns(true);
             mockStore.JustifiedCheckpoint.Returns(checkpoint);
@@ -328,9 +334,12 @@ namespace Nethermind.BeaconNode.Test
             IStore mockStore = Substitute.For<IStore>();
             Root root = new Root(Enumerable.Repeat((byte) 0x12, 32).ToArray());
             Checkpoint checkpoint = new Checkpoint(Epoch.Zero, root);
-            BeaconBlock block = new BeaconBlock(current, Root.Zero, Root.Zero, BeaconBlockBody.Zero);
+            SignedBeaconBlock signedBlock =
+                new SignedBeaconBlock(new BeaconBlock(current, Root.Zero, Root.Zero, BeaconBlockBody.Zero),
+                    BlsSignature.Zero);
             BeaconState state = TestState.Create(slot: current, finalizedCheckpoint: checkpoint);
-            mockStore.GetBlockAsync(root).Returns(block);
+            mockStore.GetHeadAsync().Returns(root);
+            mockStore.GetSignedBlockAsync(root).Returns(signedBlock);
             mockStore.GetBlockStateAsync(root).Returns(state);
             mockStore.IsInitialized.Returns(true);
             mockStore.JustifiedCheckpoint.Returns(checkpoint);

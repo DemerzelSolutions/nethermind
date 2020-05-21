@@ -20,6 +20,7 @@ using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -83,13 +84,14 @@ namespace Nethermind.DataMarketplace.Test
             public bool IsTrace { get; } = true;
             public bool IsError { get; } = true;
         }
-        
+
         protected IReleaseSpec _releaseSpec = Constantinople.Instance;
         protected Address _feeAccount;
         protected Address _consumerAccount;
         protected Address _providerAccount;
         protected DevWallet _wallet;
         protected BlockchainBridge _bridge;
+        protected TxPoolBridge _txPoolBridge;
         protected INdmBlockchainBridge _ndmBridge;
         protected IStateProvider _state;
         protected INdmConfig _ndmConfig;
@@ -120,14 +122,14 @@ namespace Nethermind.DataMarketplace.Test
                 specProvider, _logManager);
             TransactionProcessor processor = new TransactionProcessor(specProvider, _state, storageProvider, machine, _logManager);
             _bridge = new BlockchainBridge(processor, _releaseSpec);
-            
+
             TxReceipt receipt = DeployContract(Bytes.FromHexString(ContractData.GetInitCode(_feeAccount)));
             ((NdmConfig) _ndmConfig).ContractAddress = receipt.ContractAddress.ToString();
             _contractAddress = receipt.ContractAddress;
-            _txPool = new TxPool.TxPool(new InMemoryTxStorage(), new Timestamper(),
-                new EthereumEcdsa(specProvider, _logManager), specProvider, new TxPoolConfig(), _state, _logManager);
-            
-            _ndmBridge = new NdmBlockchainBridge(_bridge, _txPool);
+            _txPool = new TxPool.TxPool(new InMemoryTxStorage(), Timestamper.Default,
+                new EthereumEcdsa(specProvider.ChainId, _logManager), specProvider, new TxPoolConfig(), _state, _logManager);
+
+            _ndmBridge = new NdmBlockchainBridge(_bridge, _bridge, _txPool);
         }
 
         protected TxReceipt DeployContract(byte[] initCode)
@@ -143,7 +145,7 @@ namespace Nethermind.DataMarketplace.Test
             return receipt;
         }
 
-        public class BlockchainBridge : IBlockchainBridge
+        public class BlockchainBridge : IBlockchainBridge, ITxPoolBridge
         {
             private readonly TransactionProcessor _processor;
             private readonly IReleaseSpec _spec;
@@ -188,15 +190,21 @@ namespace Nethermind.DataMarketplace.Test
                 _spec = spec;
                 _receiptsTracer = new BlockReceiptsTracer();
                 _processor = processor;
+                _tx = Build.A.Transaction.SignedAndResolved(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
+                _headBlock = Build.A.Block.WithNumber(1).WithTransactions(Enumerable.Repeat(_tx, 100).ToArray()).TestObject;
+
                 _receiptsTracer.SetOtherTracer(GethTracer);
                 _receiptsTracer.StartNewBlockTrace(_headBlock);
             }
 
-            private Block _headBlock = Build.A.Block.WithNumber(1).WithTransactions(new Transaction[100]).TestObject;
+            private Transaction _tx;
+            private Block _headBlock;
 
-            public BlockHeader Head => _headBlock.Header;
+            public Block Head => _headBlock;
             public long BestKnown { get; }
             public bool IsSyncing { get; }
+            public bool IsMining { get; }
+
             public void RecoverTxSenders(Block block)
             {
                 throw new NotImplementedException();
@@ -223,11 +231,11 @@ namespace Nethermind.DataMarketplace.Test
 
             public bool IsMainChain(Keccak blockHash) => _headBlock.Hash == blockHash;
 
-            public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
+            public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash)
             {
                 return (new TxReceipt(), new Transaction
                 {
-                    Hash = transactionHash
+                    Hash = txHash
                 });
             }
 
@@ -245,7 +253,7 @@ namespace Nethermind.DataMarketplace.Test
                 tx.Hash = tx.CalculateHash();
                 _headBlock.Transactions[_txIndex++] = tx;
                 _receiptsTracer.StartNewTxTrace(tx.Hash);
-                _processor.Execute(tx, Head, _receiptsTracer);
+                _processor.Execute(tx, Head?.Header, _receiptsTracer);
                 _receiptsTracer.EndTxTrace();
                 return tx.CalculateHash();
             }
@@ -257,7 +265,7 @@ namespace Nethermind.DataMarketplace.Test
             public Facade.BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction)
             {
                 CallOutputTracer tracer = new CallOutputTracer();
-                _processor.Execute(transaction, Head, tracer);
+                _processor.Execute(transaction, Head?.Header, tracer);
                 return new Facade.BlockchainBridge.CallOutput(tracer.ReturnValue, tracer.GasSpent, tracer.Error);
             }
 
@@ -292,7 +300,7 @@ namespace Nethermind.DataMarketplace.Test
 
                 return _nonces[address];
             }
-            
+
             public void IncrementNonce(Address address)
             {
                 var nonce = GetNonce(address);

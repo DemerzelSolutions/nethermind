@@ -20,7 +20,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.State;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -29,7 +29,7 @@ namespace Nethermind.Evm.Test
     [TestFixture(false)]
     public class VmCodeDepositTests : VirtualMachineTestsBase
     {
-        private long _blockNumber = MainNetSpecProvider.ByzantiumBlockNumber;
+        private long _blockNumber = MainnetSpecProvider.ByzantiumBlockNumber;
 
         protected override long BlockNumber => _blockNumber;
 
@@ -42,7 +42,7 @@ namespace Nethermind.Evm.Test
         public override void Setup()
         {
             base.Setup();
-            _blockNumber = MainNetSpecProvider.ByzantiumBlockNumber;
+            _blockNumber = MainnetSpecProvider.ByzantiumBlockNumber;
         }
         
         [Test(Description = "Refunds should not be given when the call fails due to lack of gas for code deposit payment")]

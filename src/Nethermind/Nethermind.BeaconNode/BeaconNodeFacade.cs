@@ -32,7 +32,7 @@ namespace Nethermind.BeaconNode
     {
         private readonly BlockProducer _blockProducer;
         private readonly IClientVersion _clientVersion;
-        private readonly ForkChoice _forkChoice;
+        private readonly IForkChoice _forkChoice;
         private readonly ILogger<BeaconNodeFacade> _logger;
         private readonly INetworkPeering _networkPeering;
         private readonly IStore _store;
@@ -41,7 +41,7 @@ namespace Nethermind.BeaconNode
         public BeaconNodeFacade(
             ILogger<BeaconNodeFacade> logger,
             IClientVersion clientVersion,
-            ForkChoice forkChoice,
+            IForkChoice forkChoice,
             IStore store,
             INetworkPeering networkPeering,
             ValidatorAssignments validatorAssignments,
@@ -112,7 +112,7 @@ namespace Nethermind.BeaconNode
                 if (_store.IsInitialized)
                 {
                     Root head = await _forkChoice.GetHeadAsync(_store).ConfigureAwait(false);
-                    BeaconBlock block = await _store.GetBlockAsync(head).ConfigureAwait(false);
+                    BeaconBlock block = (await _store.GetSignedBlockAsync(head).ConfigureAwait(false)).Message;
                     currentSlot = block.Slot;
                 }
 
@@ -171,6 +171,7 @@ namespace Nethermind.BeaconNode
                     if (_logger.IsWarn()) Log.BlockNotAcceptedLocally(_logger, signedBlock.Message, ex);
                 }
 
+                if (_logger.IsDebug()) LogDebug.PublishingBlockToNetwork(_logger, signedBlock.Message, null);
                 await _networkPeering.PublishBeaconBlockAsync(signedBlock).ConfigureAwait(false);
 
                 if (acceptedLocally)
@@ -179,7 +180,7 @@ namespace Nethermind.BeaconNode
                 }
                 else
                 {
-                    return new ApiResponse(StatusCode.Success);
+                    return new ApiResponse(StatusCode.BroadcastButFailedValidation);
                 }
             }
             catch (Exception ex)
@@ -191,7 +192,8 @@ namespace Nethermind.BeaconNode
 
         public async Task<ApiResponse<IList<ValidatorDuty>>> ValidatorDutiesAsync(
             IList<BlsPublicKey> validatorPublicKeys,
-            Epoch? epoch, CancellationToken cancellationToken)
+            Epoch? epoch,
+            CancellationToken cancellationToken)
         {
             if (validatorPublicKeys.Count < 1)
             {
@@ -204,32 +206,21 @@ namespace Nethermind.BeaconNode
                 return ApiResponse.Create<IList<ValidatorDuty>>(StatusCode.CurrentlySyncing);
             }
 
-            // TODO: Rather than check one by one (each of which loops through potentially all slots for the epoch), optimise by either checking multiple, or better possibly caching or pre-calculating
-            IList<ValidatorDuty> validatorDuties = new List<ValidatorDuty>();
-            foreach (BlsPublicKey validatorPublicKey in validatorPublicKeys)
+            try
             {
-                ValidatorDuty validatorDuty;
-                try
-                {
-                    validatorDuty =
-                        await _validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, epoch ?? Epoch.None)
-                            .ConfigureAwait(false);
-                }
-                catch (ArgumentOutOfRangeException outOfRangeException) when (outOfRangeException.ParamName == "epoch")
-                {
-                    return ApiResponse.Create<IList<ValidatorDuty>>(StatusCode.DutiesNotAvailableForRequestedEpoch);
-                }
-                catch (Exception ex)
-                {
-                    if (_logger.IsWarn()) Log.ApiErrorValidatorDuties(_logger, ex);
-                    throw;
-                }
-
-                validatorDuties.Add(validatorDuty);
+                var validatorDuties = await _validatorAssignments.GetValidatorDutiesAsync(validatorPublicKeys, epoch);
+                ApiResponse<IList<ValidatorDuty>> response = ApiResponse.Create(StatusCode.Success, validatorDuties);
+                return response;
             }
-
-            ApiResponse<IList<ValidatorDuty>> response = ApiResponse.Create(StatusCode.Success, validatorDuties);
-            return response;
+            catch (ArgumentOutOfRangeException outOfRangeException) when (outOfRangeException.ParamName == "epoch")
+            {
+                return ApiResponse.Create<IList<ValidatorDuty>>(StatusCode.DutiesNotAvailableForRequestedEpoch);
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsWarn()) Log.ApiErrorValidatorDuties(_logger, ex);
+                throw;
+            }
         }
 
         private async Task<BeaconState> GetHeadStateAsync()

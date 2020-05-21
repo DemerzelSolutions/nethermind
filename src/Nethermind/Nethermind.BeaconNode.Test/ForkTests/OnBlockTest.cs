@@ -40,7 +40,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
 
             // Initialization
             IStore store = testServiceProvider.GetService<IStore>();
@@ -74,7 +74,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
         private async Task RunOnBlock(IServiceProvider testServiceProvider, IStore store, SignedBeaconBlock signedBlock, bool expectValid)
         {
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
-            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
 
             if (!expectValid)
             {
@@ -88,7 +88,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
             await forkChoice.OnBlockAsync(store, signedBlock);
 
             Root blockRoot = cryptographyService.HashTreeRoot(signedBlock.Message);
-            BeaconBlock storedBlock = await store.GetBlockAsync(blockRoot);
+            BeaconBlock storedBlock = (await store.GetSignedBlockAsync(blockRoot)).Message;
             storedBlock.ShouldBe(signedBlock.Message);
         }
     }

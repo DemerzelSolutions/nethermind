@@ -19,6 +19,7 @@ using Microsoft.Extensions.Logging;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.P2p;
 
 namespace Nethermind.BeaconNode
 {
@@ -67,6 +68,14 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define<int>(LogLevel.Debug,
                 new EventId(6003, nameof(BeaconNodeWorkerExecuteExiting)),
                 "Beacon node worker execute thread exiting [{ThreadId}].");
+        public static readonly Action<ILogger, RpcDirection, PeeringStatus, string, Exception?> SendingStatusToPeer =
+            LoggerMessage.Define<RpcDirection, PeeringStatus, string>(LogLevel.Debug,
+                new EventId(6004, nameof(SendingStatusToPeer)),
+                "Sending status {RpcDirection} {Status} to peer {PeerId}.");
+        public static readonly Action<ILogger, string, Epoch, Root, Slot, Exception?> PeerBehind =
+            LoggerMessage.Define<string, Epoch, Root, Slot>(LogLevel.Debug,
+                new EventId(6004, nameof(PeerBehind)),
+                "Peer {PeerId} is behind, no need to sync (peer finalized epoch {FinalizedSlot}, head {PeerHeadRoot}, slot {PeerHeadSlot}).");
         
         // 61xx debug - state transition
         public static readonly Action<ILogger, Deposit, BeaconState, Exception?> ProcessDeposit =
@@ -212,11 +221,17 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define<Slot, BlsSignature, Slot>(LogLevel.Debug,
                 new EventId(6400, nameof(NewBlockSkippedSlots)),
                 "Request for new block for slot {Slot} for randao {RandaoReveal} is skipping from parent slot {ParentSlot}.");
-
         public static readonly Action<ILogger, ulong, string, BeaconBlock, string, Exception?> NewBlockProduced
             = LoggerMessage.Define<ulong, string, BeaconBlock, string>(LogLevel.Debug,
                 new EventId(6401, nameof(NewBlockProduced)),
                 "New block produced for slot {Slot} with RANDAO reveal {RandaoReveal}, block {BeaconBlock}, and graffiti {Graffiti}");
-        
+        public static readonly Action<ILogger, BeaconBlock, Exception?> PublishingBlockToNetwork
+            = LoggerMessage.Define<BeaconBlock>(LogLevel.Debug,
+                new EventId(6402, nameof(PublishingBlockToNetwork)),
+                "Publishing block {BeaconBlock} to network");
+        public static readonly Action<ILogger, int, Epoch, Root, Exception?> GettingMissingValidatorDutiesForCache =
+            LoggerMessage.Define<int, Epoch, Root>(LogLevel.Debug,
+                new EventId(6403, nameof(GettingMissingValidatorDutiesForCache)),
+                "Validator duties for {0} validators are missing from the cache and need to be calculated for epoch {Epoch} with starting root {EpochStartRoot}.");
     }
 }

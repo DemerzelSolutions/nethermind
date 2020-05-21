@@ -41,8 +41,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
-    // [Explicit("Repeatedly fails on Travis")]
     public class PeerManagerTests
     {
         private RlpxMock _rlpxPeer;
@@ -224,7 +224,7 @@ namespace Nethermind.Network.Test
             _storage.UpdateNodes(CreateNodes(count));
         }
 
-        [Test]
+        [Test, Retry(10)]
         public void Will_connect_to_a_candidate_node()
         {
             SetupPersistedPeers(1);
@@ -294,7 +294,7 @@ namespace Nethermind.Network.Test
             _peerManager.ActivePeers.Count.Should().Be(1);
         }
 
-        private void HandshakeOnCreate(object? sender, SessionEventArgs e)
+        private void HandshakeOnCreate(object sender, SessionEventArgs e)
         {
             e.Session.Handshake(e.Session.RemoteNodeId);
         }
